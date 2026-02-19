@@ -1,16 +1,18 @@
 {
   "manifest_version": 3,
   "name": "LectureLens",
-  "version": "1.0.0",
-  "description": "Ask doubts about YouTube lectures with full video context",
+  "version": "2.0.0",
+  "description": "Ask doubts about YouTube lectures with AI-powered context understanding",
   
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   
   "host_permissions": [
-    "https://www.youtube.com/*"
+    "https://www.youtube.com/*",
+    "http://localhost:5001/*"
   ],
   
   "action": {
@@ -26,7 +28,7 @@
     {
       "matches": ["https://www.youtube.com/watch*"],
       "js": ["content.js"],
-      "run_at": "document_end"
+      "run_at": "document_idle"
     }
   ],
   
