@@ -1,16 +1,31 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h2>LectureLens</h2>
-
-  <textarea id="question" placeholder="Ask your doubt"></textarea>
-  <button id="askBtn">Ask</button>
-
-  <div id="response"></div>
-
+  <div class="container">
+    <div class="header">
+      <h1>🎓 LectureLens</h1>
+    </div>
+    
+    <div class="status" id="status">Ask a question about this lecture</div>
+    
+    <textarea 
+      id="question" 
+      placeholder="Ask about what's happening in the video right now..."
+      rows="3"
+    ></textarea>
+    
+    <button id="askBtn">Ask with Context</button>
+    
+    <!-- ✅ NEW: Use div instead of textarea for formatted output -->
+    <div class="response-container">
+      <div id="response" class="response"></div>
+    </div>
+  </div>
+  
   <script src="popup.js"></script>
 </body>
 </html>
