@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "LectureLens",
+  "version": "1.0",
+  "description": "AI doubt assistant for YouTube lectures",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "host_permissions": [
+    "http://localhost:5000/*"
+  ]
+}
