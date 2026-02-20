@@ -32,15 +32,14 @@ async function handleAsk() {
     return;
   }
   
+  const startTime = Date.now();
+  
   askBtn.disabled = true;
-  askBtn.textContent = "⏳ Processing...";
+  askBtn.textContent = "Processing...";
   responseBox.innerHTML = "";
-  statusBox.textContent = "🔍 Analyzing video...";
-  statusBox.style.background = "#f0f4ff";
+  statusBox.textContent = "Getting video context...";
   
   try {
-    statusBox.textContent = "📹 Getting video context...";
-    
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     
     if (!tab.url.includes("youtube.com/watch")) {
@@ -58,16 +57,16 @@ async function handleAsk() {
     }
     
     const videoContext = contextResponse.data;
-    console.log("Video context:", videoContext);
     
-    if (videoContext.transcript && videoContext.visualFrames) {
-      statusBox.textContent = "🎯 Asking AI (transcript + visuals)...";
-    } else if (videoContext.transcript) {
-      statusBox.textContent = "📝 Asking AI (using transcript)...";
-    } else if (videoContext.visualFrames) {
-      statusBox.textContent = "👁️ Asking AI (analyzing frames)...";
+    // UPDATE: Better status messages
+    if (videoContext.transcript && videoContext.transcript.length > 0) {
+      statusBox.textContent = "Analyzing (fast mode - 3s)...";
+      statusBox.style.background = "#d1fae5"; // Green - fast
+    } else if (videoContext.visualFrames && videoContext.visualFrames.length > 0) {
+      statusBox.textContent = "Analyzing visuals (this may take 15s)...";
+      statusBox.style.background = "#fef3c7"; // Yellow - warning slow
     } else {
-      statusBox.textContent = "🧠 Asking AI (general knowledge)...";
+      statusBox.textContent = "Generating answer...";
     }
     
     const backendResponse = await fetch("http://localhost:5001/ask", {
@@ -88,22 +87,22 @@ async function handleAsk() {
     const data = await backendResponse.json();
     
     if (!data.success) {
-      throw new Error(data.error || "Backend returned an error");
+      throw new Error(data.error || "Backend error");
     }
     
-    statusBox.textContent = `✅ Answer (at ${videoContext.currentTimeFormatted}):`;
+    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    
+    statusBox.textContent = `Answer (${elapsedTime}s)`;
     statusBox.style.background = "#d1fae5";
     
     responseBox.innerHTML = formatResponse(data.answer);
-    
-    // Add click listeners for timestamp links
     addTimestampClickHandlers(tab.id);
     
     questionInput.value = "";
     
   } catch (error) {
     console.error("Error:", error);
-    statusBox.textContent = "❌ Error";
+    statusBox.textContent = "Error";
     statusBox.style.background = "#fee";
     responseBox.innerHTML = `<p style="color: #d00; padding: 20px;">${error.message}</p>`;
   } finally {
@@ -146,16 +145,14 @@ function formatResponse(text) {
   html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
   
   // Convert timestamps to clickable links
-  // Matches: "At 2:30", "at 1:45", "Frame 3 (20 seconds ago)", etc.
-  html = html.replace(/([Aa]t |earlier at |later at )(\d+):(\d+)/g, (match, prefix, mins, secs) => {
+  // Matches: "At 2:30", "at 1:45", etc.
+  html = html.replace(/([Aa]t |earlier at |later at |shown at )(\d+):(\d+)/g, (match, prefix, mins, secs) => {
     const totalSeconds = parseInt(mins) * 60 + parseInt(secs);
     return `${prefix}<a href="#" class="timestamp-link" data-time="${totalSeconds}">${mins}:${secs}</a>`;
   });
   
-  // Also match "Frame X (Ys ago)" format
-  html = html.replace(/Frame \d+ \((\d+) seconds? ago\)/gi, (match) => {
-    return `<span class="frame-ref">${match}</span>`;
-  });
+  // Match "Frame X" references
+  html = html.replace(/Frame (\d+)/gi, '<span class="frame-ref">Frame $1</span>');
   
   // Paragraphs
   html = html.replace(/\n\n/g, '</p><p>');

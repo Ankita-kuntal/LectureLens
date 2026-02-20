@@ -25,7 +25,7 @@ app.get("/", (req, res) => {
   res.json({ 
     status: "LectureLens backend running",
     version: "2.1.0",
-    features: ["transcript", "vision", "combined-analysis"]
+    features: ["transcript", "vision", "smart-detection"]
   });
 });
 
@@ -55,6 +55,7 @@ app.get("/transcript/:videoId", async (req, res) => {
 });
 
 // Main Q&A endpoint
+// Main Q&A endpoint
 app.post("/ask", async (req, res) => {
   const { question, videoInfo, transcript, visualFrames } = req.body;
   
@@ -64,29 +65,27 @@ app.post("/ask", async (req, res) => {
   console.log("❓ Question:", question);
   console.log("📝 Has Transcript:", !!transcript);
   console.log("🖼️  Has Frames:", visualFrames?.length || 0);
+  
+  const questionType = detectQuestionType(question);
+  console.log("🧠 Question Type:", questionType);
   console.log("=".repeat(60));
   
   try {
     let answer;
     
-    // BEST: Use BOTH transcript AND vision
-    if (transcript && visualFrames && visualFrames.length > 0) {
-      console.log("🎯 Using COMBINED transcript + vision...");
-      answer = await answerWithBoth(question, videoInfo, transcript, visualFrames);
+    // PRIORITY 1: Use transcript if available (FAST - 2-3 seconds)
+    if (transcript && transcript.length > 0) {
+      console.log("⚡ FAST MODE: Using transcript (2-3 seconds)");
+      answer = await answerWithTranscript(question, videoInfo, transcript, questionType === "origin");
     }
-    // GOOD: Just transcript
-    else if (transcript && transcript.length > 0) {
-      console.log("📝 Using transcript-based answer...");
-      answer = await answerWithTranscript(question, videoInfo, transcript);
-    }
-    // OK: Just vision
+    // PRIORITY 2: Use vision only if NO transcript (SLOW - 10-15 seconds)
     else if (visualFrames && visualFrames.length > 0) {
-      console.log("👁️ Using vision-based answer...");
-      answer = await answerWithVision(question, videoInfo, visualFrames);
+      console.log("🐌 SLOW MODE: Using vision AI (10-15 seconds)");
+      answer = await answerWithVision(question, videoInfo, visualFrames, questionType === "origin");
     }
     // FALLBACK: General knowledge
     else {
-      console.log("🧠 Using general knowledge fallback...");
+      console.log("🧠 FALLBACK: General knowledge");
       answer = await answerWithGeneralKnowledge(question, videoInfo);
     }
     
@@ -106,6 +105,43 @@ app.post("/ask", async (req, res) => {
 });
 
 // ===== HELPER FUNCTIONS =====
+
+// Smart question type detection
+function detectQuestionType(question) {
+  const q = question.toLowerCase();
+  
+  // Origin keywords (need timeline)
+  const originKeywords = [
+    'how did', 'where did', 'where does', 'where is this from',
+    'came from', 'come from', 'got this', 'get this', 'derived',
+    'why this value', 'why is this', 'what happened before',
+    'earlier', 'previous', 'mentioned before', 'shown before'
+  ];
+  
+  // Explanation keywords (just need current context)
+  const explanationKeywords = [
+    'what is', 'what are', 'define', 'explain', 'meaning of',
+    'how does', 'how do', 'tell me about', 'describe',
+    'difference between', 'example of', 'use of', 'what does'
+  ];
+  
+  // Check for origin indicators
+  for (const keyword of originKeywords) {
+    if (q.includes(keyword)) {
+      return "origin";
+    }
+  }
+  
+  // Check for explanation indicators
+  for (const keyword of explanationKeywords) {
+    if (q.includes(keyword)) {
+      return "explanation";
+    }
+  }
+  
+  // Default: adaptive (might need some context)
+  return "adaptive";
+}
 
 async function fetchTranscriptFromYouTube(videoId) {
   try {
@@ -152,31 +188,71 @@ function decodeHTML(html) {
     .replace(/&nbsp;/g, ' ');
 }
 
-async function answerWithTranscript(question, videoInfo, transcript) {
+async function answerWithTranscript(question, videoInfo, transcript, needsTimeline = false) {
   const contextTranscript = transcript.substring(0, 3000);
   
-  const prompt = `You are a helpful tutor explaining a YouTube lecture to a confused student.
+  let prompt;
+  
+  if (needsTimeline) {
+    prompt = `You are a friendly tutor explaining a concept to a confused student. Act like ChatGPT - warm, clear, and educational.
 
 VIDEO: "${videoInfo.title}"
 CURRENT TIME: ${videoInfo.timestamp}
 
-TRANSCRIPT CONTEXT (what was said recently):
+TRANSCRIPT:
 ${contextTranscript}
 
 STUDENT'S CONFUSION: ${question}
 
-The student is confused about something they just saw/heard. Your job is to:
-1. Find WHERE in the transcript this concept was introduced or explained
-2. Trace back to the ORIGIN of any values/formulas they're asking about
-3. Explain the PROGRESSION: "First at [earlier point], then [next step], finally [now]"
+YOUR JOB:
+- EXPLAIN the concept clearly, don't just describe what's on screen
+- Use simple language like talking to a friend
+- Include timestamps when referencing earlier moments: "At 2:30"
+- Teach the WHY and HOW, not just WHAT
 
-Provide a clear, detailed explanation. Reference specific parts of the transcript.
+FORMAT:
 
-Format with:
-- **Bold** for key terms/values
-- Clear paragraphs
-- Step-by-step breakdown
-- Time references when possible (e.g., "Earlier in the video...")`;
+## Quick Answer
+[One sentence that directly answers their confusion]
+
+## Here's What's Happening
+[Explain the concept in simple terms - teach it like ChatGPT would]
+
+## Timeline (if relevant)
+At 2:30: [what was introduced]
+At 3:15: [how it developed]
+
+REMEMBER: You're a TEACHER, not a screen narrator. Help them understand the concept!`;
+  } else {
+    prompt = `You are a friendly tutor like ChatGPT. Explain concepts clearly and simply.
+
+VIDEO: "${videoInfo.title}"
+CURRENT TIME: ${videoInfo.timestamp}
+
+CONTEXT:
+${contextTranscript}
+
+STUDENT'S QUESTION: ${question}
+
+YOUR JOB:
+- EXPLAIN the concept, don't describe the screen
+- Use everyday language
+- Give examples if helpful
+- Make it easy to understand
+
+FORMAT:
+
+## Quick Answer
+[Direct answer in one sentence]
+
+## Let Me Explain
+[Teach the concept clearly with examples]
+
+## In Simple Terms
+[Break it down even simpler if needed]
+
+Teach like ChatGPT - warm, clear, educational!`;
+  }
 
   const response = await fetch(
     "https://api.groq.com/openai/v1/chat/completions",
@@ -190,7 +266,7 @@ Format with:
         model: "llama-3.3-70b-versatile",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        max_tokens: 1500
+        max_tokens: 1200
       })
     }
   );
@@ -199,18 +275,19 @@ Format with:
   return data.choices?.[0]?.message?.content || "No response generated";
 }
 
-async function answerWithVision(question, videoInfo, visualFrames) {
+async function answerWithVision(question, videoInfo, visualFrames, needsTimeline = false) {
   if (!genAI) {
     return "Vision AI is not configured. Please add GOOGLE_API_KEY to enable visual analysis.";
   }
   
-  console.log("🔍 Vision AI: Starting analysis...");
+  console.log("🔍 Vision AI: Starting...");
+  console.log("🔍 Frames:", visualFrames.length);
+  console.log("🔍 Timeline mode:", needsTimeline ? "YES" : "NO");
   
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    console.log("✅ Using model: gemini-2.5-flash");
     
-    const imageParts = visualFrames.map((frame, index) => {
+    const imageParts = visualFrames.map((frame) => {
       const base64Data = frame.image 
         ? (frame.image.includes('base64,') ? frame.image.split('base64,')[1] : frame.image)
         : (frame.includes('base64,') ? frame.split('base64,')[1] : frame);
@@ -223,80 +300,102 @@ async function answerWithVision(question, videoInfo, visualFrames) {
       };
     });
     
-    console.log("🔍 Vision AI: Image parts created:", imageParts.length);
+    let prompt;
     
-    const timestamps = visualFrames.map(f => f.timestamp || "unknown").join(", ");
-    
-    const prompt = `You are a helpful tutor analyzing screenshots from a video lecture to help a confused student.
+    if (needsTimeline) {
+      const frameList = visualFrames.map((f, i) => `- Frame ${i+1}: ${f.timestamp} (${f.label})`).join('\n');
+      
+      prompt = `You are a friendly tutor like ChatGPT. I'm showing you screenshots from a lecture video.
 
 VIDEO: "${videoInfo.title}"
 CURRENT TIME: ${videoInfo.timestamp}
 
-I'm providing ${visualFrames.length} screenshots from the video timeline:
-${visualFrames.map((f, i) => `- Frame ${i+1}: ${f.timestamp || 'current moment'} (${f.timeSeconds ? Math.floor(f.timeSeconds) + 's' : 'now'})`).join('\n')}
+FRAMES:
+${frameList}
 
 STUDENT'S CONFUSION: ${question}
 
 CRITICAL INSTRUCTIONS:
-1. Look at ALL frames in CHRONOLOGICAL order (oldest to newest)
-2. Identify what was shown FIRST and how it EVOLVED
-3. Track the PROGRESSION: What appeared when?
-4. Find the ORIGIN of the confusing element (formula, value, concept)
-5. Explain step-by-step: "At [time/Frame X], the instructor first showed... Then at [time/Frame Y], they..."
+- DO NOT just describe what you see on screen
+- EXPLAIN the concept that's being taught
+- Look at the visuals to understand WHAT concept is being explained, then TEACH that concept
+- Use simple language
+- Include timestamps: "At 1:30"
 
-Analyze what's visible:
-- Text, code, formulas, diagrams
-- Handwritten notes on board/screen
-- Any values, variables, or equations
-- How they connect across frames
+FORMAT:
 
-Provide timestamps/frame references (e.g., "In Frame 3 (20 seconds ago)...") so the student can jump back.
+## Quick Answer
+[Direct answer to their question]
 
-Format with:
-- **Bold** for key terms/values
-- Clear step-by-step explanation
-- Frame/time references
-- Direct answer to their confusion`;
+## Let Me Break This Down
+[Explain the concept clearly - TEACH it, don't describe it]
 
-    console.log("🔍 Vision AI: Calling Gemini API...");
+## Timeline
+At ${visualFrames[2]?.timestamp || '1:30'}: [when this concept was introduced]
+At ${visualFrames[0]?.timestamp || '0:30'}: [how it started]
+
+You're a TEACHER using the visuals to understand what to teach, not a screen narrator!`;
+    } else {
+      prompt = `You are a friendly tutor like ChatGPT. I'm showing you a screenshot from a lecture.
+
+VIDEO: "${videoInfo.title}"
+CURRENT TIME: ${videoInfo.timestamp}
+
+STUDENT'S QUESTION: ${question}
+
+CRITICAL:
+- Look at the visual to understand WHAT is being taught
+- Then EXPLAIN that concept clearly
+- DON'T describe the screen, TEACH the concept
+- Use simple language
+
+FORMAT:
+
+## Quick Answer
+[One sentence answer]
+
+## Here's the Concept
+[Teach the concept based on what you see, but explain it like ChatGPT would]
+
+## Example
+[Give a simple example if helpful]
+
+Remember: You're explaining concepts, not describing images!`;
+    }
     
     const result = await model.generateContent([prompt, ...imageParts]);
     const response = await result.response;
-    const text = response.text();
     
-    console.log("🔍 Vision AI: Success! Answer length:", text.length);
-    
-    return text;
+    console.log("✅ Vision AI: Success!");
+    return response.text();
     
   } catch (error) {
     console.error("❌ Vision AI Error:", error.message);
-    
-    // Fallback answer
-    return `I tried to analyze the video frames but encountered a technical issue (${error.message}).
+    return `## I Hit a Technical Issue
 
-Based on the video title "${videoInfo.title}" and your question "${question}", I can provide general guidance, but for the specific answer visible on screen, please try:
+I couldn't analyze the video frames right now.
 
-1. **Rewinding 30-60 seconds** to see where this concept was introduced
-2. **Enabling captions** if available (click CC button)
-3. **Checking the video description** for formulas or key values
-
-If you can describe what you see on screen, I can help explain the concept!`;
+## What You Can Try
+1. Rewind 30-60 seconds to see when this concept started
+2. Enable captions (CC button) if available
+3. Tell me what you see, and I'll explain the concept!`;
   }
 }
 
-async function answerWithBoth(question, videoInfo, transcript, visualFrames) {
+async function answerWithBoth(question, videoInfo, transcript, visualFrames, needsTimeline = false) {
   if (!genAI) {
-    return await answerWithTranscript(question, videoInfo, transcript);
+    return await answerWithTranscript(question, videoInfo, transcript, needsTimeline);
   }
   
-  console.log("🎯 Combined Analysis: Using transcript + vision together");
+  console.log("🎯 Combined: transcript + vision");
   
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const contextTranscript = transcript.substring(0, 2500);
     
-    const contextTranscript = transcript.substring(0, 3000);
+    const framesToUse = visualFrames.slice(0, 3);
     
-    const imageParts = visualFrames.map(frame => {
+    const imageParts = framesToUse.map(frame => {
       const base64Data = frame.image 
         ? (frame.image.includes('base64,') ? frame.image.split('base64,')[1] : frame.image)
         : (frame.includes('base64,') ? frame.split('base64,')[1] : frame);
@@ -309,65 +408,103 @@ async function answerWithBoth(question, videoInfo, transcript, visualFrames) {
       };
     });
     
-    const prompt = `You are a tutor with BOTH audio transcript AND visual screenshots from a lecture video.
+    let prompt;
+    
+    if (needsTimeline) {
+      prompt = `You are a warm, friendly tutor like ChatGPT. I'm giving you both audio transcript and visual screenshots.
 
 VIDEO: "${videoInfo.title}"
-CURRENT TIME: ${videoInfo.timestamp}
+TIME: ${videoInfo.timestamp}
 
-TRANSCRIPT (recent spoken words):
-${contextTranscript}
-
-VISUAL FRAMES: ${visualFrames.length} screenshots showing timeline progression:
-${visualFrames.map((f, i) => `- Frame ${i+1}: ${f.timestamp || 'now'}`).join('\n')}
+TRANSCRIPT: ${contextTranscript}
+FRAMES: ${framesToUse.length} screenshots
 
 STUDENT'S CONFUSION: ${question}
 
-Use BOTH sources together:
-- TRANSCRIPT = What was SAID (audio)
-- IMAGES = What was SHOWN/WRITTEN (visual)
+CRITICAL:
+- Use transcript + visuals to understand WHAT concept is being taught
+- Then EXPLAIN that concept clearly like ChatGPT would
+- Include timestamps: "At 2:30"
+- DON'T describe the screen, TEACH the concept
 
-Cross-reference them! For example:
-- Transcript says "plugging in these values" → Images show which values and where they came from
-- Transcript explains a concept → Images show the formula/diagram
-- Images show a result → Transcript explains how it was derived
+FORMAT:
 
-Find the ORIGIN by checking both audio cues and visual progression.
+## Quick Answer
+[One clear sentence]
 
-Provide a complete answer with:
-- **Time/frame references** (e.g., "At 2:30, the instructor said... while showing...")
-- **Bold** for key terms
-- **Step-by-step** explanation
-- Both what was SAID and what was SHOWN`;
+## Here's What's Happening
+[Explain the concept using both audio and visual context]
 
-    const result = await model.generateContent([prompt, ...imageParts]);
-    const response = await result.response;
+## Timeline
+At 1:30: [when concept introduced]
+At 2:15: [how it developed]
+
+You're an EDUCATOR, not a narrator!`;
+    } else {
+      prompt = `You are a friendly tutor like ChatGPT with transcript + screenshots.
+
+VIDEO: "${videoInfo.title}"
+TIME: ${videoInfo.timestamp}
+
+TRANSCRIPT: ${contextTranscript}
+VISUALS: ${framesToUse.length} screenshot(s)
+
+STUDENT'S QUESTION: ${question}
+
+INSTRUCTIONS:
+- Understand WHAT is being taught from both sources
+- EXPLAIN the concept clearly
+- Use simple language
+- Give examples
+
+FORMAT:
+
+## Quick Answer
+[Direct answer]
+
+## Let Me Explain
+[Teach the concept clearly]
+
+You're teaching concepts, not describing screens!`;
+    }
     
-    console.log("✅ Combined analysis complete");
-    return response.text();
+    const result = await model.generateContent([prompt, ...imageParts]);
+    return result.response.text();
     
   } catch (error) {
-    console.error("❌ Combined analysis error:", error);
-    return await answerWithTranscript(question, videoInfo, transcript);
+    console.error("❌ Combined error:", error);
+    return await answerWithTranscript(question, videoInfo, transcript, needsTimeline);
   }
 }
 
 async function answerWithGeneralKnowledge(question, videoInfo) {
-  const prompt = `You are a helpful tutor. A student is watching "${videoInfo.title}" at ${videoInfo.timestamp} and is confused.
+  const prompt = `You are a warm, helpful tutor like ChatGPT.
+
+STUDENT is watching: "${videoInfo.title}" at ${videoInfo.timestamp}
 
 STUDENT'S QUESTION: ${question}
 
-Unfortunately, neither the transcript nor visual frames are available for this video.
+Unfortunately, I don't have the transcript or visuals from this specific moment.
 
-Provide:
-1. A conceptual explanation based on the video title and question
-2. General guidance on the topic
-3. Suggestions for the student:
-   - Rewind 30-60 seconds to see where this was introduced
-   - Enable captions (CC button) if available
-   - Check video description for formulas/values
-   - Pause and check what's visible on screen
+YOUR JOB:
+- Explain the concept they're asking about based on the video topic
+- Use simple, clear language
+- Give helpful suggestions for finding the answer in the video
 
-Be helpful but honest that you don't have the specific video context.`;
+FORMAT:
+
+## Let Me Help With That Concept
+[Explain the concept generally based on video title and question]
+
+## What You Can Try
+1. Rewind 30-60 seconds to see when this started
+2. Enable captions (CC) if available
+3. Check the video description
+
+## The Basic Idea
+[General educational explanation of the concept]
+
+Be warm and helpful like ChatGPT!`;
 
   const response = await fetch(
     "https://api.groq.com/openai/v1/chat/completions",
@@ -394,8 +531,9 @@ Be helpful but honest that you don't have the specific video context.`;
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
   console.log("\n" + "=".repeat(60));
-  console.log("🚀 LectureLens Backend v2.1 Started");
+  console.log("🚀 LectureLens Backend v2.1 (FINAL - CHATGPT STYLE)");
   console.log("📡 Server: http://localhost:" + PORT);
-  console.log("🤖 AI: Groq + Google Gemini");
+  console.log("🤖 AI: Groq + Google Gemini 2.5 Flash");
+  console.log("💬 Teaching mode: Explain concepts, not describe screens");
   console.log("=".repeat(60) + "\n");
 });

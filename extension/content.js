@@ -1,4 +1,4 @@
-console.log("✅ LectureLens v2.1 loaded");
+console.log("✅ LectureLens v2.1 (ULTRA FAST) loaded");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === "PING") {
@@ -55,27 +55,11 @@ async function getVideoContext() {
   console.log(`📹 Video: ${videoTitle}`);
   console.log(`⏱️  Time: ${formatTime(currentTime)}`);
   
-  let transcript = null;
-  try {
-    console.log("📝 Fetching transcript...");
-    const response = await fetch(`http://localhost:5001/transcript/${videoId}`);
-    const data = await response.json();
-    if (data.success && data.transcript) {
-      transcript = data.transcript;
-      console.log("✅ Transcript fetched");
-    } else {
-      console.log("⚠️ No transcript available");
-    }
-  } catch (error) {
-    console.log("⚠️ Transcript fetch failed:", error.message);
-  }
-  
-  let visualFrames = null;
-  
-  // ALWAYS capture frames (for combined analysis or fallback)
-  console.log("📸 Capturing video frames across timeline...");
-  visualFrames = await captureVideoFrames(video);
-  console.log(`✅ Captured ${visualFrames.length} frames`);
+  // Fetch transcript and capture frames in PARALLEL for speed
+  const [transcript, visualFrames] = await Promise.all([
+    fetchTranscript(videoId),
+    captureVideoFramesFast(video) // FASTER VERSION - ONLY 1 FRAME
+  ]);
   
   return {
     videoId,
@@ -88,93 +72,71 @@ async function getVideoContext() {
   };
 }
 
-async function captureVideoFrames(video) {
-  console.log("📸 captureVideoFrames: Starting extended timeline capture...");
-  console.log("📸 Video ready state:", video.readyState);
-  console.log("📸 Video dimensions:", video.videoWidth, "x", video.videoHeight);
+async function fetchTranscript(videoId) {
+  try {
+    console.log("📝 Fetching transcript...");
+    const response = await fetch(`http://localhost:5001/transcript/${videoId}`);
+    const data = await response.json();
+    
+    if (data.success && data.transcript) {
+      console.log("✅ Transcript fetched");
+      return data.transcript;
+    } else {
+      console.log("⚠️ No transcript available");
+      return null;
+    }
+  } catch (error) {
+    console.log("⚠️ Transcript fetch failed:", error.message);
+    return null;
+  }
+}
+
+// ULTRA FAST - ONLY CAPTURE CURRENT FRAME (2-3 seconds total)
+async function captureVideoFramesFast(video) {
+  console.log("📸 Starting ULTRA FAST frame capture (1 frame only)...");
   
   const frames = [];
   
-  // Wait for video to be ready
+  // Wait briefly for video to be ready
   if (video.readyState < 2 || video.videoWidth === 0) {
-    console.log("⏳ Waiting for video to load...");
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    console.log("⏳ Waiting for video...");
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
   
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   
   if (!ctx) {
-    console.error("❌ Failed to get canvas context!");
+    console.error("❌ Canvas failed");
     return frames;
   }
   
   canvas.width = video.videoWidth || 1280;
   canvas.height = video.videoHeight || 720;
   
-  console.log("📸 Canvas size:", canvas.width, "x", canvas.height);
-  
   const currentTime = video.currentTime;
   
-  // Capture extended timeline: now, 10s, 20s, 30s, 60s ago
-  const timesToCapture = [
-    { time: currentTime, label: "now" },
-    { time: Math.max(0, currentTime - 10), label: "10s ago" },
-    { time: Math.max(0, currentTime - 20), label: "20s ago" },
-    { time: Math.max(0, currentTime - 30), label: "30s ago" },
-    { time: Math.max(0, currentTime - 60), label: "60s ago" }
-  ];
-  
-  console.log("📸 Timeline points:", timesToCapture.map(t => `${formatTime(t.time)} (${t.label})`).join(", "));
-  
-  for (let i = 0; i < timesToCapture.length; i++) {
-    const { time, label } = timesToCapture[i];
+  try {
+    console.log("🎨 Capturing CURRENT frame only...");
     
-    try {
-      console.log(`📸 Capturing frame ${i + 1}: ${formatTime(time)} (${label})`);
-      
-      // Seek to time
-      video.currentTime = time;
-      
-      // Wait for seek
-      await new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          console.warn(`⚠️ Seek timeout for frame ${i + 1}`);
-          resolve();
-        }, 1000);
-        
-        video.onseeked = () => {
-          clearTimeout(timeout);
-          resolve();
-        };
-      });
-      
-      // Extra wait for frame to render
-      await new Promise(resolve => setTimeout(resolve, 150));
-      
-      // Draw frame
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
-      
-      frames.push({
-        timestamp: formatTime(time),
-        timeSeconds: time,
-        label: label,
-        image: dataUrl
-      });
-      
-      console.log(`✅ Frame ${i + 1} captured: ${dataUrl.substring(0, 50)}... (${dataUrl.length} chars)`);
-      
-    } catch (error) {
-      console.error(`❌ Failed to capture frame ${i + 1}:`, error);
-    }
+    // Just capture current frame - NO SEEKING (instant!)
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.3); // Even lower quality for speed
+    
+    frames.push({
+      timestamp: formatTime(currentTime),
+      timeSeconds: currentTime,
+      label: "now",
+      image: dataUrl
+    });
+    
+    console.log(`✅ Frame captured: ${(dataUrl.length / 1024).toFixed(0)}KB`);
+    
+  } catch (error) {
+    console.error("❌ Capture failed:", error);
   }
   
-  // Return to original position
-  console.log(`↩️ Returning to original time: ${formatTime(currentTime)}`);
-  video.currentTime = currentTime;
-  
-  console.log(`📸 Total frames captured: ${frames.length}`);
+  console.log(`📸 Total: ${frames.length} frame (ULTRA FAST)`);
   return frames;
 }
 
