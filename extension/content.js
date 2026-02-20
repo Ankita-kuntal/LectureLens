@@ -1,4 +1,4 @@
-console.log("✅ LectureLens v2.0 loaded");
+console.log("✅ LectureLens v2.1 loaded");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === "PING") {
@@ -16,6 +16,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ success: false, error: error.message });
       }
     })();
+    return true;
+  }
+  
+  if (request.type === "SEEK_TO") {
+    const video = document.querySelector("video");
+    if (video) {
+      video.currentTime = request.time;
+      console.log(`⏪ Seeked to ${request.time}s`);
+    }
     return true;
   }
 });
@@ -62,11 +71,11 @@ async function getVideoContext() {
   }
   
   let visualFrames = null;
-  if (!transcript) {
-    console.log("📸 Capturing video frames...");
-    visualFrames = await captureVideoFrames(video);
-    console.log(`✅ Captured ${visualFrames.length} frames`);
-  }
+  
+  // ALWAYS capture frames (for combined analysis or fallback)
+  console.log("📸 Capturing video frames across timeline...");
+  visualFrames = await captureVideoFrames(video);
+  console.log(`✅ Captured ${visualFrames.length} frames`);
   
   return {
     videoId,
@@ -80,7 +89,7 @@ async function getVideoContext() {
 }
 
 async function captureVideoFrames(video) {
-  console.log("📸 captureVideoFrames: Starting...");
+  console.log("📸 captureVideoFrames: Starting extended timeline capture...");
   console.log("📸 Video ready state:", video.readyState);
   console.log("📸 Video dimensions:", video.videoWidth, "x", video.videoHeight);
   
@@ -107,26 +116,63 @@ async function captureVideoFrames(video) {
   
   const currentTime = video.currentTime;
   
-  // Capture current frame multiple times (simpler approach)
-  for (let i = 0; i < 3; i++) {
+  // Capture extended timeline: now, 10s, 20s, 30s, 60s ago
+  const timesToCapture = [
+    { time: currentTime, label: "now" },
+    { time: Math.max(0, currentTime - 10), label: "10s ago" },
+    { time: Math.max(0, currentTime - 20), label: "20s ago" },
+    { time: Math.max(0, currentTime - 30), label: "30s ago" },
+    { time: Math.max(0, currentTime - 60), label: "60s ago" }
+  ];
+  
+  console.log("📸 Timeline points:", timesToCapture.map(t => `${formatTime(t.time)} (${t.label})`).join(", "));
+  
+  for (let i = 0; i < timesToCapture.length; i++) {
+    const { time, label } = timesToCapture[i];
+    
     try {
-      console.log(`🎨 Drawing frame ${i + 1}...`);
+      console.log(`📸 Capturing frame ${i + 1}: ${formatTime(time)} (${label})`);
       
-      // Small delay between captures
-      if (i > 0) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      // Seek to time
+      video.currentTime = time;
       
+      // Wait for seek
+      await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn(`⚠️ Seek timeout for frame ${i + 1}`);
+          resolve();
+        }, 1000);
+        
+        video.onseeked = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+      });
+      
+      // Extra wait for frame to render
+      await new Promise(resolve => setTimeout(resolve, 150));
+      
+      // Draw frame
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+      
+      frames.push({
+        timestamp: formatTime(time),
+        timeSeconds: time,
+        label: label,
+        image: dataUrl
+      });
       
       console.log(`✅ Frame ${i + 1} captured: ${dataUrl.substring(0, 50)}... (${dataUrl.length} chars)`);
-      frames.push(dataUrl);
       
     } catch (error) {
       console.error(`❌ Failed to capture frame ${i + 1}:`, error);
     }
   }
+  
+  // Return to original position
+  console.log(`↩️ Returning to original time: ${formatTime(currentTime)}`);
+  video.currentTime = currentTime;
   
   console.log(`📸 Total frames captured: ${frames.length}`);
   return frames;

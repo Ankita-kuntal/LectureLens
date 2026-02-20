@@ -58,6 +58,10 @@ body {
   background: #fafbff;
 }
 
+#question::placeholder {
+  color: #a0aec0;
+}
+
 #askBtn {
   width: 100%;
   padding: 16px;
@@ -152,6 +156,40 @@ body {
   color: #e74c3c;
 }
 
+/* Clickable timestamp links */
+.timestamp-link {
+  color: #667eea;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #e0e7ff;
+  transition: background 0.2s, transform 0.1s;
+  display: inline-block;
+  border-bottom: 2px solid #667eea;
+}
+
+.timestamp-link:hover {
+  background: #c7d2fe;
+  transform: translateY(-1px);
+}
+
+.timestamp-link:active {
+  transform: translateY(0);
+}
+
+/* Frame references */
+.frame-ref {
+  color: #7c3aed;
+  font-weight: 500;
+  background: #f3e8ff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+/* Custom scrollbar */
 .response-container::-webkit-scrollbar {
   width: 8px;
 }

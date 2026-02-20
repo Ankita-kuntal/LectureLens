@@ -60,8 +60,10 @@ async function handleAsk() {
     const videoContext = contextResponse.data;
     console.log("Video context:", videoContext);
     
-    if (videoContext.transcript) {
-      statusBox.textContent = "🤖 Asking AI (using transcript)...";
+    if (videoContext.transcript && videoContext.visualFrames) {
+      statusBox.textContent = "🎯 Asking AI (transcript + visuals)...";
+    } else if (videoContext.transcript) {
+      statusBox.textContent = "📝 Asking AI (using transcript)...";
     } else if (videoContext.visualFrames) {
       statusBox.textContent = "👁️ Asking AI (analyzing frames)...";
     } else {
@@ -93,6 +95,9 @@ async function handleAsk() {
     statusBox.style.background = "#d1fae5";
     
     responseBox.innerHTML = formatResponse(data.answer);
+    
+    // Add click listeners for timestamp links
+    addTimestampClickHandlers(tab.id);
     
     questionInput.value = "";
     
@@ -128,19 +133,65 @@ function formatResponse(text) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
   
+  // Convert markdown headings
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
   html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
   
+  // Convert **bold**
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   
+  // Convert bullet points
   html = html.replace(/^\- (.+)$/gm, '<li>$1</li>');
   html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
   
+  // Convert timestamps to clickable links
+  // Matches: "At 2:30", "at 1:45", "Frame 3 (20 seconds ago)", etc.
+  html = html.replace(/([Aa]t |earlier at |later at )(\d+):(\d+)/g, (match, prefix, mins, secs) => {
+    const totalSeconds = parseInt(mins) * 60 + parseInt(secs);
+    return `${prefix}<a href="#" class="timestamp-link" data-time="${totalSeconds}">${mins}:${secs}</a>`;
+  });
+  
+  // Also match "Frame X (Ys ago)" format
+  html = html.replace(/Frame \d+ \((\d+) seconds? ago\)/gi, (match) => {
+    return `<span class="frame-ref">${match}</span>`;
+  });
+  
+  // Paragraphs
   html = html.replace(/\n\n/g, '</p><p>');
   html = '<p>' + html + '</p>';
   
+  // Code blocks
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
   
   return html;
+}
+
+function addTimestampClickHandlers(tabId) {
+  const timestampLinks = responseBox.querySelectorAll('.timestamp-link');
+  
+  timestampLinks.forEach(link => {
+    link.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const time = parseInt(e.target.dataset.time);
+      
+      try {
+        await chrome.tabs.sendMessage(tabId, {
+          type: "SEEK_TO",
+          time: time
+        });
+        
+        statusBox.textContent = `⏪ Rewound to ${e.target.textContent}`;
+        statusBox.style.background = "#e0e7ff";
+        
+        setTimeout(() => {
+          statusBox.textContent = "✅ Answer:";
+          statusBox.style.background = "#d1fae5";
+        }, 2000);
+        
+      } catch (error) {
+        console.error("Failed to seek:", error);
+      }
+    });
+  });
 }

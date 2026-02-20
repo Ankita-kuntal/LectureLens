@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LectureLens",
-  "version": "2.0.0",
-  "description": "Ask doubts about YouTube lectures with AI-powered context understanding",
+  "version": "2.1.0",
+  "description": "Ask questions about YouTube lectures and get instant, context-aware answers with AI-powered visual and transcript analysis",
   
   "permissions": [
     "activeTab",
