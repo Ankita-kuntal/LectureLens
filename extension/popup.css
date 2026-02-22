@@ -261,3 +261,69 @@ body {
 #askBtn:disabled {
   animation: pulse 1.5s ease-in-out infinite;
 }
+
+.timestamp-link {
+  color: #2563eb;
+  text-decoration: underline;
+  cursor: pointer;
+  font-weight: 600;
+  background: #eff6ff;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.timestamp-link:hover {
+  background: #2563eb;
+  color: white;
+}
+
+h2 {
+  color: #1e40af;
+  font-size: 14px;
+  font-weight: 700;
+  margin: 12px 0 6px 0;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #e0e7ff;
+}
+
+h3 {
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 10px 0 4px 0;
+}
+
+strong {
+  background: #fef9c3;
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+
+.timestamp-link {
+  color: #2563eb !important;
+  text-decoration: underline !important;
+  cursor: pointer !important;
+  font-weight: 600;
+  background: #eff6ff;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid #bfdbfe;
+}
+
+.timestamp-link:hover {
+  background: #2563eb;
+  color: white !important;
+}
+
+li {
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+code {
+  background: #f1f5f9;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 12px;
+}
