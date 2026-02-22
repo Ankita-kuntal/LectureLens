@@ -151,6 +151,7 @@ If no transcript exists, the extension captures the current video frame and send
 - Requires the local backend server to be running
 - First question on a new video takes ~8–10 seconds (yt-dlp fetches transcript). All follow-up questions are 2–3 seconds due to caching
 - Works best on videos that have captions or auto-generated subtitles
+=======
 
 ---
 
