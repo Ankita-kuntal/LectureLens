@@ -114,7 +114,6 @@ app.get("/transcript/:videoId", async (req, res) => {
 
 
 // Main Q&A endpoint
-// Main Q&A endpoint
 app.post("/ask", async (req, res) => {
   const { question, videoInfo, transcript, visualFrames, conversationHistory = [] } = req.body;
 
@@ -151,7 +150,6 @@ app.post("/ask", async (req, res) => {
     // Replace your current priority logic with this:
 
     if (transcript && transcript.length > 0) {
-  // Transcript is ALWAYS better and faster - use it exclusively
   console.log("⚡ FAST MODE: Transcript only (2-3 seconds)");
   answer = await answerWithTranscript(question, videoInfo, transcript, questionType === "origin", conversationHistory);
 }
@@ -179,9 +177,7 @@ else {
   }
 });
 
-// ===== HELPER FUNCTIONS =====
 
-// Smart question type detection
 function detectQuestionType(question) {
   const q = question.toLowerCase();
 
@@ -303,9 +299,6 @@ async function answerWithTranscript(question, videoInfo, transcript, needsTimeli
     contextText = relevant
       .map(seg => `[${seg.label}] ${seg.text.trim()}`)
       .join('\n');
-
-    // If question is about origin, also grab the first 2 minutes
-    // (many lecturers introduce formulas at the start)
     if (needsTimeline) {
       const intro = segments.slice(0, 4)
         .map(seg => `[${seg.label}] ${seg.text.trim()}`)
@@ -318,8 +311,6 @@ async function answerWithTranscript(question, videoInfo, transcript, needsTimeli
     contextText = transcript.substring(0, 3000);
   }
 
-  // Now pass contextText to Groq prompt instead of raw transcript
-  // ...rest of your prompt code unchanged
 
 
 
